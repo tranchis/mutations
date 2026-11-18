@@ -11,6 +11,25 @@ MODEL_REGISTRY = {
 GENES={"treatment":("original","without_painterly_instruction","visible brushwork, rough painted texture"),"lighting":("as prompted","soft diffuse light","dramatic side lighting","flat even light"),"composition":("as prompted","off-centre composition","substantial empty space around the subject")}
 IMAGE_GENE_FIELDS=("model","adapter","adapter_scale","prompt","negative_prompt","reference_1","reference_2","identity_reference","control_reference","operation","seed","steps","guidance")
 EVOLUTION_CONFIG={"crossover_rate":0.5,"mutation_rate":0.1,"favourite_parent_weight":3,"other_parent_weight":1}
+EVOLUTION_VERSION="ga-1"
+
+def validate_genome(genome):
+    gene = genome.get("gene") if isinstance(genome, dict) else None
+    if not isinstance(gene, dict): raise ValueError("Genome must contain a gene object.")
+    missing = [field for field in IMAGE_GENE_FIELDS if field not in gene]
+    if missing: raise ValueError("Genome is missing gene fields: " + ", ".join(missing))
+    if gene["model"] not in MODEL_REGISTRY: raise ValueError("Unknown model gene.")
+    model = MODEL_REGISTRY[gene["model"]]
+    if gene["adapter"] not in (None, model["adapter"]): raise ValueError("Adapter is incompatible with model.")
+    if not isinstance(gene["adapter_scale"], (int, float)) or not 0 <= gene["adapter_scale"] <= 1: raise ValueError("Adapter scale must be between 0 and 1.")
+    if gene["operation"] != "generate": raise ValueError("Unsupported image operation.")
+    if not isinstance(gene["prompt"], str) or not gene["prompt"].strip(): raise ValueError("Prompt gene cannot be empty.")
+    if type(gene["seed"]) is not int or not 0 <= gene["seed"] <= 0xFFFFFFFF: raise ValueError("Seed must be a 32-bit integer.")
+    if type(gene["steps"]) is not int or not 1 <= gene["steps"] <= 100: raise ValueError("Steps must be between 1 and 100.")
+    if not isinstance(gene["guidance"], (int, float)) or not 0 <= gene["guidance"] <= 30: raise ValueError("Guidance must be between 0 and 30.")
+    for key in ("negative_prompt", "reference_1", "reference_2", "identity_reference", "control_reference"):
+        if gene[key] is not None and not isinstance(gene[key], str): raise ValueError(f"{key} must be a string or null.")
+    return True
 
 def compile_prompt(genome):
  prompts={p["id"]:p["text"] for p in catalog()["prompts"]}; pid=genome["source_prompt_id"]; treatment=genome["genes"]["treatment"]
@@ -65,14 +84,16 @@ def reproduce(generation,review):
  # explicit exclusion. Neutral candidates may contribute at baseline weight;
  # rejected candidates can never become parents.
  parents=[c for c in generation["candidates"] if decisions.get(c["id"]) in ("keep","undecided")]
- rng=random.Random(secrets.randbits(64)); weights=[(EVOLUTION_CONFIG["favourite_parent_weight"] if p["id"]==review.get("favourite_id") else EVOLUTION_CONFIG["other_parent_weight"]) if decisions[p["id"]]=="keep" else 1 for p in parents]; children=[]
+ run_seed=secrets.randbits(64)
+ rng=random.Random(run_seed); weights=[(EVOLUTION_CONFIG["favourite_parent_weight"] if p["id"]==review.get("favourite_id") else EVOLUTION_CONFIG["other_parent_weight"]) if decisions[p["id"]]=="keep" else 1 for p in parents]; children=[]
  for _ in range(9):
-  a,b=rng.choices(parents,weights=weights,k=2); gene=copy.deepcopy(a["genome"]["gene"]); inherited={}; ops=[]
+  a,b=rng.choices(parents,weights=weights,k=2); gene=copy.deepcopy(a["genome"]["gene"]); inherited={}; ops=[{"type":"random_stream","seed":run_seed,"algorithm_version":EVOLUTION_VERSION}]
   for field in IMAGE_GENE_FIELDS:
-   if rng.random()<EVOLUTION_CONFIG["crossover_rate"]: gene[field]=b["genome"]["gene"][field]; inherited[field]=b["id"]; ops.append({"type":"crossover","field":field,"parents":[a["id"],b["id"]]})
+   before=gene[field]
+   if rng.random()<EVOLUTION_CONFIG["crossover_rate"]: gene[field]=b["genome"]["gene"][field]; inherited[field]=b["id"]; ops.append({"type":"crossover","field":field,"parents":[a["id"],b["id"]],"before":before,"after":gene[field],"probability":EVOLUTION_CONFIG["crossover_rate"]})
    else: inherited[field]=a["id"]
    if rng.random()<EVOLUTION_CONFIG["mutation_rate"]:
-    before=gene[field]; gene[field],detail=_mutate(field,gene[field],rng); ops.append({"type":"mutation","field":field,"before":before,"after":gene[field],**detail})
+    before=gene[field]; gene[field],detail=_mutate(field,gene[field],rng); ops.append({"type":"mutation","field":field,"before":before,"after":gene[field],"probability":EVOLUTION_CONFIG["mutation_rate"],"kernel":field,**detail})
   ops.insert(0,{"type":"inherit","fields":inherited}); model=MODEL_REGISTRY[gene["model"]]
   if gene["adapter"] is None and model["adapter"]: gene["adapter"]=model["adapter"]
   genome={"gene":gene,"source_prompt_id":a["genome"]["source_prompt_id"],"genes":copy.deepcopy(a["genome"].get("genes",{})),"scheduler":"LCMScheduler"}; sync_genome(genome)

@@ -1,6 +1,7 @@
 """Persistent nine-image generation jobs and a serialized, direct diffusion worker."""
 
 import json
+import hashlib
 import subprocess
 import threading
 import uuid
@@ -8,7 +9,7 @@ from pathlib import Path
 
 from .demo import catalog
 from .feedback import ValidationError
-from .genetics import initial_population, reproduce, available_models, MODEL_REGISTRY
+from .genetics import initial_population, reproduce, available_models, MODEL_REGISTRY, EVOLUTION_CONFIG, EVOLUTION_VERSION, validate_genome
 from .runtime import PROJECT, ensure_runtime, environment
 from .storage import ConflictError, now
 
@@ -37,6 +38,8 @@ class GenerationService:
         payload = {"title": "First generated variations" if round_number == 1 else f"New descendants · round {round_number}",
                    "experiment": "My Word · local image generation", "prompt": preset_info["question"],
                    "is_demo": False, "candidates": candidates,
+                   "algorithm": {"version": EVOLUTION_VERSION, "config": EVOLUTION_CONFIG},
+                   "validation": {"duplicate_assets": [], "duplicate_genes": [], "warnings": []},
                    "demo": {"mode": LIVE_MODE, "round": round_number, "preset": preset,
                             "session_id": session_id, "parent_generation_id": parent["generation_id"] if parent else None,
                             "parent_review_id": parent["review_id"] if parent else None},
@@ -175,6 +178,9 @@ class GenerationService:
         manifest = {"cache_dir": str(PROJECT / ".mutations" / "models"), "candidates": [
             {"slot": i, "genome": c["genome"], "output": str(target / f"{i+1:02}.png")}
             for i, c in enumerate(generation["candidates"]) if c["media"] is None]}
+        for candidate in generation["candidates"]:
+            if candidate["media"] is None:
+                validate_genome(candidate["genome"])
         manifest_path = self.store.root / "jobs" / f"{gid}.json"
         manifest_path.write_text(json.dumps(manifest))
         if not manifest["candidates"]:
@@ -205,11 +211,25 @@ class GenerationService:
                     elif event.get("event") == "step":
                         self.update(gid, lambda p: p["generation"].update(current_slot=event["slot"], step=event["step"], steps=event["steps"]))
                     elif event.get("event") == "image":
-                        media = self.store.add_asset(f"generated-{event['slot']+1:02}.png", Path(event["path"]).read_bytes())
+                        data = Path(event["path"]).read_bytes()
+                        if not data:
+                            raise RuntimeError("The image worker produced an empty output.")
+                        try:
+                            from PIL import Image
+                            with Image.open(Path(event["path"])) as image:
+                                image.verify()
+                        except Exception as exc:
+                            raise RuntimeError(f"Invalid image output: {exc}") from exc
+                        media = self.store.add_asset(f"generated-{event['slot']+1:02}.png", data)
+                        event["execution"]["output_sha256"] = hashlib.sha256(data).hexdigest()
                         def record(payload):
                             payload["candidates"][event["slot"]].update(media=media, execution=event["execution"])
                             payload["candidates"][event["slot"]]["phenotype"] = {
                                 "status": "complete", "assets": [media], "execution": event["execution"]}
+                            hashes = [c["media"]["sha256"] for c in payload["candidates"] if c.get("media")]
+                            payload["validation"]["duplicate_assets"] = sorted({h for h in hashes if hashes.count(h) > 1})
+                            genes = [json.dumps(c["genome"].get("gene"), sort_keys=True) for c in payload["candidates"]]
+                            payload["validation"]["duplicate_genes"] = sorted({g for g in genes if genes.count(g) > 1})
                             payload["generation"]["completed"] = sum(c["media"] is not None for c in payload["candidates"])
                         self.update(gid, record)
                     elif event.get("event") == "error":
@@ -223,7 +243,13 @@ class GenerationService:
             return
         if code or state["completed"] != 9:
             raise RuntimeError(error_message or "The image worker stopped. See generation.log in the workspace for details.")
-        self.update(gid, lambda p: p["generation"].update(status="ready", message="Nine newly generated images are ready", error=None))
+        def complete(payload):
+            duplicate_assets = payload.get("validation", {}).get("duplicate_assets", [])
+            warnings = payload.setdefault("validation", {}).setdefault("warnings", [])
+            if duplicate_assets and "duplicate image outputs" not in warnings:
+                warnings.append("duplicate image outputs")
+            payload["generation"].update(status="ready", message="Nine newly generated images are ready", error=None)
+        self.update(gid, complete)
 
     def close(self):
         self.closed.set()
