@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#f6f5ef">
+  <title>Mutations — selection room</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to candidates</a>
+  <aside class="sidebar" aria-label="Project navigation">
+    <a class="brand" href="/" aria-label="Mutations home"><span class="brand-mark" aria-hidden="true">✳</span> mutations<span class="brand-dot">.</span></a>
+    <div class="project-label">MY WORD / EVOLUTION STUDIES</div>
+    <div class="sidebar-intro">A space to look,<br>choose, and look again.</div>
+    <button id="new-generation" class="button new-button"><span aria-hidden="true">＋</span> Generate new session</button>
+    <div class="section-label">GENERATIONS <span id="generation-count">0</span></div>
+    <nav id="generation-list" class="generation-list" aria-label="Generations"></nav>
+    <div class="sidebar-bottom">
+      <button id="demo-button" class="text-button">About the research <span aria-hidden="true">↗</span></button>
+      <button id="import-button" class="text-button">Import your own outputs <span aria-hidden="true">＋</span></button>
+      <a id="export-feedback" class="text-button" href="/api/export" download>Export feedback <span aria-hidden="true">↓</span></a>
+      <div class="local-status"><span></span> Local workspace <span class="status-detail">Saved on this machine</span></div>
+    </div>
+  </aside>
+
+  <main id="main" class="workspace">
+    <header class="page-header">
+      <div><div class="eyebrow">MUTATIONS OF MY WORD / INTERACTIVE DEMO</div><h1>The selection room</h1></div>
+      <label class="reviewer-label">Reviewer <input id="reviewer" placeholder="Your name (optional)" maxlength="100" autocomplete="name"></label>
+    </header>
+
+    <section class="review-heading" aria-label="Current generation">
+      <div class="generation-heading"><span id="generation-number" class="generation-number">01</span><div><div class="title-line"><h2 id="generation-title">First generated variations</h2><span id="review-status" class="pill">Preparing generation…</span></div><p id="generation-subtitle">Nine new images, generated locally from the original prompts.</p></div></div>
+      <button id="source-toggle" class="button subtle" disabled aria-expanded="false" aria-controls="source-panel">Source &amp; context <span aria-hidden="true">↗</span></button>
+    </section>
+    <section id="source-panel" class="source-panel" hidden>
+      <div class="section-label">THE QUESTION FOR THIS SESSION</div><p id="source-prompt"></p>
+      <div class="research-intro">The project revisits My Word (2023) through bias, authorship, realism, and what remains human. These small artistic comparisons invite exploration; they do not measure models in general.</div>
+      <div id="research-presets" class="research-presets" aria-label="Try another research question"></div>
+      <details><summary>Original prompts · seven scenes, seven style variants, one control</summary><div id="prompt-library" class="prompt-library"></div></details>
+      <a class="report-link" href="/research/main.pdf" target="_blank" rel="noopener">Read the research report ↗</a>
+    </section>
+    <div id="example-banner" class="example-banner" hidden><span>ARCHIVE REPLAY · MAIN.PDF</span> 14 research stills, ready to explore. Your choices guide the next batch; images can repeat.</div>
+    <section id="generation-progress" class="generation-progress" hidden aria-label="Image generation progress">
+      <div class="job-heading"><strong id="job-message" role="status">Preparing the image generator</strong><span id="job-count">0 / 9</span></div>
+      <progress id="job-progress" value="0" max="9" aria-label="Generated images"></progress>
+      <p id="job-error" class="form-error" hidden role="alert"></p>
+      <div class="job-actions"><span>First launch installs the runtime and caches the model automatically.</span><button id="pause-generation" class="button subtle">Pause generation</button><button id="retry-generation" class="button primary" hidden>Resume generation</button></div>
+    </section>
+
+    <div class="board-toolbar">
+      <p>Keep what interests you. <strong>Then generate nine descendants.</strong></p>
+      <div class="toolbar-controls"><label class="toggle-label"><input id="reveal-metadata" type="checkbox"> Reveal identities</label><button id="shuffle" class="icon-button" title="Shuffle candidate display" aria-label="Shuffle candidate display">⇄</button></div>
+    </div>
+    <section id="candidate-grid" class="candidate-grid" aria-label="Nine candidates" aria-live="polite"></section>
+
+    <section class="generation-reflection"><label for="generation-note">A thought about this generation <span>optional</span></label><textarea id="generation-note" rows="2" maxlength="4000" placeholder="What is emerging? What would you like the next generation to explore?"></textarea></section>
+    <footer class="selection-footer">
+      <div><div id="selection-count" class="selection-count"><span class="keep-dot"></span> 0 to keep <span class="count-divider">/</span> 0 rejected <span class="count-divider">/</span> 9 undecided</div><p id="save-message">Undecided candidates remain unlabeled.</p></div>
+      <div class="footer-actions"><button id="reject-all" class="text-button" disabled>Reject all nine</button><button id="submit-review" class="button primary" disabled>Save &amp; generate nine <span aria-hidden="true">↗</span></button></div>
+    </footer>
+  </main>
+
+  <dialog id="new-dialog" class="new-dialog">
+    <form id="new-form">
+      <div class="dialog-heading"><div><div class="eyebrow">BEGIN A REVIEW</div><h2>Add a generation</h2></div><button type="button" class="icon-button" data-close="new-dialog" aria-label="Close generation form">×</button></div>
+      <p class="muted">Bring nine images or clips from your experiment.</p>
+      <label class="field-label" for="new-title">Generation title</label><input id="new-title" placeholder="e.g. First departures" maxlength="200" required>
+      <label class="field-label" for="new-prompt">Source prompt <span>optional</span></label><textarea id="new-prompt" rows="3" maxlength="12000" placeholder="The original prompt or question behind these variations"></textarea>
+      <label id="drop-zone" class="drop-zone" for="media-files"><span class="upload-icon" aria-hidden="true">↥</span><strong>Choose nine images or clips</strong><span>or drop them here · up to 128 MB each</span><input id="media-files" type="file" accept=".png,.jpg,.jpeg,.webp,.gif,.avif,.mp4,.webm,.mov" multiple></label>
+      <div class="file-summary"><span id="file-count">0 / 9 files</span><button id="clear-files" type="button" class="text-button">Clear</button></div><ol id="file-list" class="file-list"></ol>
+      <label class="field-label" for="manifest-file">Candidate metadata <span>optional JSON manifest</span></label><input id="manifest-file" type="file" accept=".json,application/json"><p class="field-help">Preserve IDs, genomes and parents. Match each candidate’s <code>file</code> to an uploaded filename.</p>
+      <p id="upload-error" class="form-error" role="alert"></p>
+      <div class="dialog-actions"><button type="button" class="button subtle" data-close="new-dialog">Cancel</button><button id="create-generation" class="button primary" type="submit" disabled>Open generation <span aria-hidden="true">↗</span></button></div>
+    </form>
+  </dialog>
+
+  <dialog id="detail-dialog" class="detail-dialog">
+    <div class="detail-preview" id="detail-preview"></div>
+    <div class="detail-content">
+      <div class="dialog-heading"><div><div class="eyebrow">LOOK A LITTLE CLOSER</div><h2 id="detail-title">Candidate 01</h2></div><button class="icon-button" data-close="detail-dialog" aria-label="Close candidate detail">×</button></div>
+      <div id="detail-decisions" class="detail-decisions"></div>
+      <div class="rubric-heading"><h3>What makes it worth pursuing?</h3><span>Optional · 0 low, 4 high</span></div>
+      <div id="rubric"></div>
+      <label class="field-label" for="candidate-note">Your reason <span>optional</span></label><textarea id="candidate-note" maxlength="4000" rows="3" placeholder="Point to a detail, tension, or possibility you notice."></textarea>
+      <details id="genome-details"><summary>Generation recipe &amp; ancestry</summary><pre id="genome-json"></pre></details>
+      <div class="detail-bottom"><span>Notes stay in your draft until submission.</span><button class="button primary" data-close="detail-dialog">Done <span aria-hidden="true">✓</span></button></div>
+    </div>
+  </dialog>
+  <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>
