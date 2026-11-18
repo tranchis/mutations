@@ -55,7 +55,7 @@ def main():
                 try:
                     with urlopen(f"http://127.0.0.1:{port}/api/health", timeout=.5) as response:
                         health = json.load(response)
-                    if (isinstance(health, dict) and health.get("app") == "mutations-selection-room" and health.get("version") == 3
+                    if (isinstance(health, dict) and health.get("app") == "mutations-selection-room" and health.get("version") == 4
                             and health.get("workspace") == hashlib.sha256(str(store.root).encode()).hexdigest()):
                         print(f"Mutations is already running: http://127.0.0.1:{port}", flush=True)
                         if open_browser:

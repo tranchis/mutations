@@ -10,7 +10,7 @@ On macOS, double-click **Start Mutations.command**. Or run:
 python3 run.py
 ```
 
-The application opens your browser automatically. On first launch it creates a private virtual environment and downloads the small, pinned Stable Diffusion 1.5 checkpoint plus LCM adapter (about 3 GB); no API key or ComfyUI is required. Subsequent launches use the local cache. Requires Python 3.10 or newer and an internet connection only for that first download. Your workspace is saved automatically in `.mutations/` beside the application. Starting again preserves it; launching twice reuses the running workspace.
+The application opens your browser automatically. On first launch it creates a private virtual environment and downloads the pinned Stable Diffusion 1.5 checkpoint plus LCM adapter (about 3 GB); no API key or ComfyUI is required. The model selector also offers DreamShaper 8 and Realistic Vision 5.1; those optional checkpoints are downloaded only when selected. Subsequent launches use the local cache. Requires Python 3.10 or newer and an internet connection only for a model’s first download. Your workspace is saved automatically in `.mutations/` beside the application. Starting again preserves it; launching twice reuses the running workspace.
 
 ## Try the demo
 
@@ -18,7 +18,9 @@ The application opens your browser automatically. On first launch it creates a p
 2. Optionally open an image to add a reason, score its relationship to the work, productive departure or specificity, or choose a favourite. Scores and reviewer name are optional.
 3. Click **Save & next nine**. Your choices are recorded and guide the next batch automatically.
 
-Each round is a real local inference job: nine fresh seeds are rendered by SD 1.5 + LCM at 512×512. Kept candidates become parents; crossover and small prompt/lighting/composition mutations produce the next recipes. Every image records its seed, exact recipe, execution device and parent IDs. Use **Pause** and **Retry** to stop/resume a job; completed images are retained. **Start fresh demo** begins another session and retains earlier history. The bundled report stills remain available as an immutable reference archive, but they are not replayed as new candidates.
+Each round is a real local inference job: nine candidates are rendered at 512×512. Initial seeds are random; descendant seeds are treated as an ordinary genome variable, subject to the same configured crossover and mutation operators as the other variables. **Keep** is positive parent evidence, **undecided** is neutral baseline evidence, and **reject** explicitly excludes a candidate; at least one keep is required to advance. Crossover and prompt/lighting/composition/model/seed mutations produce the next recipes. Every image records its seed, exact recipe, execution device and parent IDs. Use **Pause** and **Retry** to stop/resume a job; completed images are retained. **Start fresh demo** begins another session and retains earlier history. The bundled report stills remain available as an immutable reference archive, but they are not replayed as new candidates.
+
+Each individual has a broad state representation: an executable `genome` containing generator, conditioning, references, ordered program operations, temporal state and constraints; a `phenotype` containing rendered assets and execution metadata; ancestry and variation operators; and an `evaluation` containing the latest human fitness observation. The current worker implements the `generate → image` operation, while the representation is ready for multi-stage image/video programs.
 
 **Source & context** contains the research questions, three ready-made starting points, the full prompt library, and a link to the report. **Reveal identities** shows model and prompt labels; the image detail includes source page, figure, available parameters and selection history. **Shuffle** preserves candidate identity and records display order. Keys **1–9** toggle keep; **Shift + 1–9** rejects, outside text fields and buttons.
 
@@ -62,7 +64,7 @@ Drafts are saved in your browser. Submitted feedback is stored in SQLite with ap
 
 Exports derive keep-over-explicit-reject pairs, plus favourite-over-other-keep pairs. Undecided candidates are unlabeled. An unrated rubric dimension is `null`; zero is an actual rating. Pairwise rows from one review share context and are **not independent votes**. Only the latest review supplies training comparisons; earlier revisions remain in the history. Preserve review and lineage grouping when fitting or validating an evaluator.
 
-The service uses the Python standard library, plain HTML/CSS/JavaScript and SQLite around a direct Diffusers worker. It listens on loopback only. There is no ComfyUI dependency or remote hosting requirement. The demo currently generates still images with one tested local model family; it does not claim automatic video generation, identity-LoRA training or a learned fitness model.
+The service uses the Python standard library, plain HTML/CSS/JavaScript and SQLite around a direct Diffusers worker. It listens on loopback only. There is no ComfyUI dependency or remote hosting requirement. The demo generates still images from a selectable local model registry; it does not claim automatic video generation, identity-LoRA training or a learned fitness model.
 
 ## Advanced options
 

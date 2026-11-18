@@ -12,6 +12,7 @@ from .feedback import ValidationError
 from .storage import ConflictError, Store
 from .demo import catalog
 from .generation import GenerationService
+from .genetics import available_models
 
 WEB = Path(__file__).with_name("web")
 MAX_UPLOAD = 128 * 1024 * 1024
@@ -78,9 +79,11 @@ def make_handler(store, generator):
             parsed = urlparse(self.path)
             path = unquote(parsed.path)
             if path == "/api/health":
-                return self.send(200, {"app": "mutations-selection-room", "version": 3, "workspace": hashlib.sha256(str(store.root).encode()).hexdigest()})
+                return self.send(200, {"app": "mutations-selection-room", "version": 4, "workspace": hashlib.sha256(str(store.root).encode()).hexdigest()})
             if path == "/api/catalog":
                 return self.send(200, catalog())
+            if path == "/api/models":
+                return self.send(200, {"models": available_models()})
             if path == "/research/main.pdf":
                 report = Path(__file__).resolve().parent.parent / "main.pdf"
                 if report.is_file():
@@ -177,7 +180,7 @@ def make_handler(store, generator):
                 if self.path == "/api/demo":
                     if not isinstance(value, dict):
                         raise ValidationError("A session request must be an object.")
-                    return self.send(201, generator.start_session(value.get("preset", "overview")))
+                    return self.send(201, generator.start_session(value.get("preset", "overview"), value.get("model_ids")))
                 match = re.fullmatch(r"/api/generations/([a-f0-9]{32})/next", self.path)
                 if match:
                     if not isinstance(value, dict):

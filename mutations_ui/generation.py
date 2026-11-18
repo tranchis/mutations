@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .demo import catalog
 from .feedback import ValidationError
-from .genetics import initial_population, reproduce
+from .genetics import initial_population, reproduce, available_models, MODEL_REGISTRY
 from .runtime import PROJECT, ensure_runtime, environment
 from .storage import ConflictError, now
 
@@ -29,8 +29,10 @@ class GenerationService:
         gid = uuid.uuid4().hex
         session_id = session_id or uuid.uuid4().hex[:12]
         candidates = [{**item, "id": f"{session_id}:r{round_number}:c{i+1:02}",
-                       "label": f"SD 1.5 + LCM · seed {item['genome']['seed']}",
-                       "media": None, "provenance": {"kind": "new_model_inference", "source_prompts": "main.pdf, appendix A"}}
+                       "label": f"{MODEL_REGISTRY[item['genome'].get('model_id', 'sd15-lcm')]['label']} · seed {item['genome']['seed']}",
+                       "media": None, "phenotype": {"status": "queued", "assets": [], "execution": None},
+                       "evaluation": None,
+                       "provenance": {"kind": "new_model_inference", "source_prompts": "main.pdf, appendix A"}}
                       for i, item in enumerate(population)]
         payload = {"title": "First generated variations" if round_number == 1 else f"New descendants · round {round_number}",
                    "experiment": "My Word · local image generation", "prompt": preset_info["question"],
@@ -46,18 +48,18 @@ class GenerationService:
     def bootstrap(self):
         with self.store.connect() as db:
             db.execute("BEGIN IMMEDIATE")
-            row = db.execute("SELECT value FROM app_state WHERE key='live-generation-v1'").fetchone()
+            row = db.execute("SELECT value FROM app_state WHERE key='live-generation-v2'").fetchone()
             if row:
                 gid = row["value"]
             else:
                 gid = self._insert(db, initial_population(), "overview")
-                db.execute("INSERT INTO app_state VALUES ('live-generation-v1', ?)", (gid,))
+                db.execute("INSERT INTO app_state VALUES ('live-generation-v2', ?)", (gid,))
         self.wake()
         return gid
 
-    def start_session(self, preset="overview"):
+    def start_session(self, preset="overview", model_ids=None):
         try:
-            population = initial_population(preset)
+            population = initial_population(preset, model_ids)
         except ValueError as exc:
             raise ValidationError(str(exc)) from exc
         with self.store.connect() as db:
@@ -206,6 +208,8 @@ class GenerationService:
                         media = self.store.add_asset(f"generated-{event['slot']+1:02}.png", Path(event["path"]).read_bytes())
                         def record(payload):
                             payload["candidates"][event["slot"]].update(media=media, execution=event["execution"])
+                            payload["candidates"][event["slot"]]["phenotype"] = {
+                                "status": "complete", "assets": [media], "execution": event["execution"]}
                             payload["generation"]["completed"] = sum(c["media"] is not None for c in payload["candidates"])
                         self.update(gid, record)
                     elif event.get("event") == "error":

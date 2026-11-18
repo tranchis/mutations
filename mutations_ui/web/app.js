@@ -111,6 +111,15 @@ function mediaHTML(item, detail = false) {
     ? `<video src="${url}" ${detail ? "controls" : "muted"} playsinline preload="metadata" aria-label="Candidate video"></video>`
     : `<img src="${url}" alt="${detail ? "Candidate output for review" : "Candidate visual output"}" draggable="false">`;
 }
+function identityHTML(item) {
+  const g = item.genome || {}, generator = g.generator || {};
+  const model = generator.model_id || g.model_id || generator.model || g.model || "unspecified model";
+  const adapters = (generator.adapters || g.adapters || []).map((a) => a.model || a).join(", ") || "none";
+  const operation = (g.program || []).map((step) => step.op).join(" → ") || "generate";
+  const parents = item.parents?.length ? ` · parents ${item.parents.join(", ")}` : " · initial sample";
+  const genome = escapeHTML(JSON.stringify(g, null, 2));
+  return `<div class="identity-main">${escapeHTML(model)}</div><div class="identity-detail">adapter: ${escapeHTML(adapters)} · operation: ${escapeHTML(operation)} · seed: ${escapeHTML(g.seed ?? "—")}</div><div class="identity-detail">${escapeHTML(parents)}</div><details class="genome-details"><summary>Full genome</summary><pre>${genome}</pre></details>`;
+}
 function decisionsHTML(id, detailed = false) {
   const value = observation(id).decision;
   return [["keep","＋","Keep"],["reject","−","Reject"],["undecided","?",detailed ? "Undecided" : ""]].map(([decision,symbol,label]) => `
@@ -131,7 +140,7 @@ function renderGrid() {
     const annotated = row.note || Object.values(row.scores).some((score) => score !== null);
     return `<article class="candidate-card ${row.decision === "keep" ? "kept" : row.decision === "reject" ? "rejected" : ""}" data-card="${escapeHTML(id)}" aria-label="Candidate ${index + 1}: ${row.decision}">
       <div class="media-container">${mediaHTML(item)}<button class="media-open" data-inspect="${escapeHTML(id)}" aria-label="Inspect candidate ${index + 1}"></button><span class="candidate-index">${String(index + 1).padStart(2,"0")}</span><button class="media-expand" data-inspect="${escapeHTML(id)}" aria-label="Enlarge candidate ${index + 1}">↗</button>${item.media.mime.startsWith("video/") ? '<span class="video-label">▶ VIDEO</span>' : ""}${draft.favourite_id === id ? '<span class="favourite-badge">★ FAVOURITE</span>' : ""}</div>
-      ${reveal ? `<div class="card-identity" title="${escapeHTML(item.label)}">${escapeHTML(item.label)}</div>` : ""}
+      ${reveal ? `<div class="card-identity">${identityHTML(item)}</div>` : ""}
       <div class="card-controls"><div class="decisions">${decisionsHTML(id)}</div><button class="card-note ${annotated ? "annotated" : ""}" data-inspect="${escapeHTML(id)}" aria-label="${annotated ? "Edit" : "Add"} scores and notes for candidate ${index + 1}" title="Scores & notes">≡</button></div>
     </article>`;
   }).join("");
@@ -286,7 +295,8 @@ async function startDemo(preset = "overview") {
   busy = true;
   $("#new-generation").disabled = true;
   try {
-    const generation = await post("/api/demo", {preset});
+    const modelId = $("#model-choice")?.value || "all";
+    const generation = await post("/api/demo", {preset, ...(modelId === "all" ? {} : {model_ids: [modelId]})});
     generations.unshift(generation);
     openGeneration(generation.id);
     $("#source-panel").hidden = true;
@@ -385,8 +395,13 @@ document.addEventListener("keydown", (event) => {
 async function start() {
   renderGrid();
   try {
-    const [state, research] = await Promise.all([api("/api/generations"), api("/api/catalog")]);
+    const [state, research, modelState] = await Promise.all([
+      api("/api/generations"), api("/api/catalog"),
+      api("/api/models").catch(() => ({models: [{id: "sd15-lcm", label: "Stable Diffusion 1.5 + LCM"}]}))
+    ]);
     ({generations} = state);
+    $("#model-choice").innerHTML = `<option value="all">All registered models (heterogeneous round)</option>` + modelState.models.map((model) => `<option value="${escapeHTML(model.id)}">${escapeHTML(model.label)}</option>`).join("");
+    $("#model-choice").value = "all";
     $("#research-presets").innerHTML = research.presets.map((preset) => `<button class="research-preset" data-preset="${escapeHTML(preset.id)}"><strong>${escapeHTML(preset.title)}</strong><span>${escapeHTML(preset.question)}</span><span aria-hidden="true">↗</span></button>`).join("");
     $("#prompt-library").innerHTML = research.prompts.map((prompt) => `<article><strong>${escapeHTML(prompt.id)}</strong><p>${escapeHTML(prompt.text)}</p></article>`).join("");
     renderNavigation();

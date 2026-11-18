@@ -178,6 +178,14 @@ class Store:
                 raise ConflictError("This generation changed in another tab. Reload it before submitting again; your draft is preserved.")
             db.execute("INSERT INTO reviews VALUES (?, ?, ?, ?, ?)",
                        (uuid.uuid4().hex, gid, current + 1, now(), json.dumps(review)))
+            # Keep the latest evaluation beside each phenotype for consumers
+            # that inspect individuals without joining the review table.
+            payload = json.loads(db.execute("SELECT payload FROM generations WHERE id=?", (gid,)).fetchone()[0])
+            by_id = {row["candidate_id"]: row for row in review["candidates"]}
+            for candidate in payload["candidates"]:
+                candidate["evaluation"] = by_id.get(candidate["id"])
+            payload["evaluation_revision"] = current + 1
+            db.execute("UPDATE generations SET payload=? WHERE id=?", (json.dumps(payload), gid))
         return self.get_generation(gid)["review"]
 
     def export(self, include_demo=False):
