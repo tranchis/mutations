@@ -152,13 +152,13 @@ function renderStatus() {
   const undecided = 9 - kept - rejected;
   const live = current.demo?.mode === "local-diffusion";
   $("#selection-count").innerHTML = `<span class="keep-dot"></span> ${kept} to keep <span class="count-divider">/</span> ${rejected} rejected <span class="count-divider">/</span> ${undecided} undecided`;
-  $("#submit-review").disabled = busy || !canReview() || !(kept + rejected) || (!draft.dirty && !!current.review && !(live && kept));
-  const action = live ? (kept || !rejected ? "Save & generate nine" : "Save & pause") : `${current.review ? "Update" : "Submit"} feedback`;
+  $("#submit-review").disabled = busy || !canReview() || (!draft.dirty && !!current.review && !(live && (kept || undecided)));
+  const action = live ? (kept || undecided ? "Save & generate nine" : "Save & pause") : `${current.review ? "Update" : "Submit"} feedback`;
   $("#submit-review").innerHTML = busy ? "Saving your choices…" : `${action} <span aria-hidden="true">↗</span>`;
   const status = $("#review-status");
   status.className = `pill ${draft.dirty ? "draft" : current.review ? "saved" : ""}`;
   status.textContent = !canReview() ? `${current.generation.status} · ${current.generation.completed}/9` : draft.dirty ? "Draft" : current.review ? `Saved · v${current.review.revision}` : "Awaiting selection";
-  $("#save-message").textContent = !canReview() ? "Selection opens once all nine new images are ready." : live ? (current.review && !draft.dirty && !kept ? "Search paused. Start a new session whenever you wish." : kept ? "Selected recipes will be crossed and mutated to generate nine new descendants." : "Choose one or more parents, or reject all to pause. Notes and scores are optional.") : draft.dirty ? "Draft saved in this browser. Submit to record your feedback." : current.review ? "Feedback recorded. Undecided candidates remain unlabeled." : "Undecided candidates remain unlabeled. Keys 1–9 toggle keep; Shift + 1–9 reject.";
+  $("#save-message").textContent = !canReview() ? "Selection opens once all nine new images are ready." : live ? (current.review && !draft.dirty && !kept ? "Search continues only when you change the review or start a new session." : kept ? "Kept recipes are prioritized; undecided recipes remain neutral parents." : undecided ? "No Keeps selected: undecided recipes continue neutrally; rejects are excluded." : "All nine rejected: the search pauses. Choose Keep or clear a Reject to continue.") : draft.dirty ? "Draft saved in this browser. Submit to record your feedback." : current.review ? "Feedback recorded. Undecided candidates remain unlabeled." : "Undecided candidates remain unlabeled. Keys 1–9 toggle keep; Shift + 1–9 reject.";
   $("#reject-all").disabled = !canReview();
   renderJob();
 }
@@ -177,8 +177,9 @@ function renderJob() {
 }
 function decide(id, decision) {
   if (!canReview() || busy) return;
-  observation(id).decision = decision;
-  if (draft.favourite_id === id && decision !== "keep") draft.favourite_id = null;
+  const row = observation(id);
+  row.decision = row.decision === decision ? "undecided" : decision;
+  if (draft.favourite_id === id && row.decision !== "keep") draft.favourite_id = null;
   remember(); renderGrid();
   if ($("#detail-dialog").open) renderDetailControls();
 }
@@ -272,7 +273,7 @@ async function submitReview() {
       localWrite(`mutations:draft:${generationID}`, JSON.stringify(draft));
       renderNavigation();
     }
-    if (generation.demo?.mode === "local-diffusion" && review.candidates.some((row) => row.decision === "keep")) {
+    if (generation.demo?.mode === "local-diffusion" && review.candidates.some((row) => row.decision !== "reject")) {
       const next = await post(`/api/generations/${generationID}/next`, {expected_revision:review.revision});
       if (!generations.some((g) => g.id === next.id)) generations.unshift(next);
       openGeneration(next.id);

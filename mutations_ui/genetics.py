@@ -79,11 +79,11 @@ def _mutate(field,value,rng):
 def reproduce(generation,review):
  decisions={r["candidate_id"]:r["decision"] for r in review["candidates"]}
  kept={cid for cid,decision in decisions.items() if decision=="keep"}
- if not kept: raise ValueError("No parents selected. The search is paused.")
  # Keep is positive evidence, undecided is neutral evidence, reject is an
  # explicit exclusion. Neutral candidates may contribute at baseline weight;
  # rejected candidates can never become parents.
  parents=[c for c in generation["candidates"] if decisions.get(c["id"]) in ("keep","undecided")]
+ if not parents: raise ValueError("All candidates were rejected. The search is paused.")
  run_seed=secrets.randbits(64)
  rng=random.Random(run_seed); weights=[(EVOLUTION_CONFIG["favourite_parent_weight"] if p["id"]==review.get("favourite_id") else EVOLUTION_CONFIG["other_parent_weight"]) if decisions[p["id"]]=="keep" else 1 for p in parents]; children=[]
  for _ in range(9):
