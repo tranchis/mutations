@@ -3,8 +3,8 @@ __pycache__/
 .mutations/
 .DS_Store
 .venv/
-.improvement-plan.md
 *.pdf
-IMPLEMENTATION_ANALYSIS.md
+*.md
+!README.md
 demo/
 
