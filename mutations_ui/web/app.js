@@ -88,7 +88,8 @@ function remember() {
 }
 function observation(id) { return draft.candidates.find((row) => row.candidate_id === id); }
 function candidate(id) { return current.candidates.find((row) => row.id === id); }
-function canReview() { return !current?.generation || current.generation.status === "ready"; }
+function canSelect(id) { return !busy && !!current?.candidates.find((item) => item.id === id)?.media; }
+function canSubmitReview() { return !current?.generation || current.generation.status === "ready"; }
 
 function openGeneration(id) {
   current = generations.find((g) => g.id === id);
@@ -164,7 +165,7 @@ function identityHTML(item) {
 function decisionsHTML(id, detailed = false) {
   const value = observation(id).decision;
   return [["keep","＋","Keep"],["reject","−","Reject"],["undecided","?",detailed ? "Undecided" : ""]].map(([decision,symbol,label]) => `
-    <button class="decision" data-candidate="${escapeHTML(id)}" data-decision="${decision}" aria-pressed="${value === decision}" aria-label="${label || "Undecided"}" title="${label || "Leave undecided"}" ${canReview() ? "" : "disabled"}><span aria-hidden="true">${symbol}</span>${label}</button>`).join("");
+    <button class="decision" data-candidate="${escapeHTML(id)}" data-decision="${decision}" aria-pressed="${value === decision}" aria-label="${label || "Undecided"}" title="${label || "Leave undecided"}" ${canSelect(id) ? "" : "disabled"}><span aria-hidden="true">${symbol}</span>${label}</button>`).join("");
 }
 function cardHTML(id, index, reveal) {
   const item = candidate(id), row = observation(id);
@@ -193,14 +194,14 @@ function renderStatus() {
   const undecided = 9 - kept - rejected;
   const live = current.demo?.mode === "local-diffusion";
   $("#selection-count").innerHTML = `<span class="keep-dot"></span> ${kept} to keep <span class="count-divider">/</span> ${rejected} rejected <span class="count-divider">/</span> ${undecided} undecided`;
-  $("#submit-review").disabled = busy || !canReview() || (!draft.dirty && !!current.review && !(live && (kept || undecided)));
+  $("#submit-review").disabled = busy || !canSubmitReview() || (!draft.dirty && !!current.review && !(live && (kept || undecided)));
   const action = live ? (kept || undecided ? "Save & generate nine" : "Save & pause") : `${current.review ? "Update" : "Submit"} feedback`;
   $("#submit-review").innerHTML = busy ? "Saving your choices…" : `${action} <span aria-hidden="true">↗</span>`;
   const status = $("#review-status");
   status.className = `pill ${draft.dirty ? "draft" : current.review ? "saved" : ""}`;
-  status.textContent = !canReview() ? `${current.generation.status} · ${current.generation.completed}/9` : draft.dirty ? "Draft" : current.review ? `Saved · v${current.review.revision}` : "Awaiting selection";
-  $("#save-message").textContent = !canReview() ? "Selection opens once all nine new images are ready." : live ? (current.review && !draft.dirty && !kept ? "Search continues only when you change the review or start a new session." : kept ? "Kept recipes are prioritized; undecided recipes remain neutral parents." : undecided ? "No Keeps selected: undecided recipes continue neutrally; rejects are excluded." : "All nine rejected: the search pauses. Choose Keep or clear a Reject to continue.") : draft.dirty ? "Draft saved in this browser. Submit to record your feedback." : current.review ? "Feedback recorded. Undecided candidates remain unlabeled." : "Undecided candidates remain unlabeled. Keys 1–9 toggle keep; Shift + 1–9 reject.";
-  $("#reject-all").disabled = !canReview();
+  status.textContent = !canSubmitReview() ? `${current.generation.status} · ${current.generation.completed}/9` : draft.dirty ? "Draft" : current.review ? `Saved · v${current.review.revision}` : "Awaiting selection";
+  $("#save-message").textContent = !canSubmitReview() ? "Select completed images now; Save & next unlocks when all nine are ready." : live ? (current.review && !draft.dirty && !kept ? "Search continues only when you change the review or start a new session." : kept ? "Kept recipes are prioritized; undecided recipes remain neutral parents." : undecided ? "No Keeps selected: undecided recipes continue neutrally; rejects are excluded." : "All nine rejected: the search pauses. Choose Keep or clear a Reject to continue.") : draft.dirty ? "Draft saved in this browser. Submit to record your feedback." : current.review ? "Feedback recorded. Undecided candidates remain unlabeled." : "Undecided candidates remain unlabeled. Keys 1–9 toggle keep; Shift + 1–9 reject.";
+  $("#reject-all").disabled = !canSubmitReview();
   renderJob();
 }
 function renderJob() {
@@ -217,7 +218,7 @@ function renderJob() {
   $("#retry-generation").textContent = job.status === "error" ? "Retry generation" : "Resume generation";
 }
 function decide(id, decision) {
-  if (!canReview() || busy) return;
+  if (!canSelect(id)) return;
   const row = observation(id);
   row.decision = row.decision === decision ? "undecided" : decision;
   if (draft.favourite_id === id && row.decision !== "keep") draft.favourite_id = null;
@@ -238,7 +239,7 @@ function inspect(id) {
   $("#detail-dialog").showModal();
 }
 function renderDetailControls() {
-  $("#detail-decisions").innerHTML = decisionsHTML(detailID, true) + `<button class="favourite-button" id="favourite" aria-pressed="${draft.favourite_id === detailID}" title="Your preferred candidate among those you keep" ${canReview() ? "" : "disabled"}>★ ${draft.favourite_id === detailID ? "Favourite" : "Make favourite"}</button>`;
+  $("#detail-decisions").innerHTML = decisionsHTML(detailID, true) + `<button class="favourite-button" id="favourite" aria-pressed="${draft.favourite_id === detailID}" title="Your preferred candidate among those you keep" ${canSelect(detailID) ? "" : "disabled"}>★ ${draft.favourite_id === detailID ? "Favourite" : "Make favourite"}</button>`;
   $("#rubric").innerHTML = AXES.map(([key,label,help]) => `<div class="rubric-axis"><div class="axis-title">${label}</div><p class="axis-help">${help}</p><div class="score-options" role="group" aria-label="${label}">${[0,1,2,3,4].map((value) => `<button class="score-button" data-axis="${key}" data-score="${value}" aria-label="${label}: ${value}" aria-pressed="${observation(detailID).scores[key] === value}">${value}</button>`).join("")}<button class="score-clear" data-clear-axis="${key}">Clear</button></div></div>`).join("");
 }
 
