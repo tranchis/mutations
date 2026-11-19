@@ -3,6 +3,7 @@ __pycache__/
 .mutations/
 .DS_Store
 .venv/
+.vscode/
 *.pdf
 *.md
 !README.md
