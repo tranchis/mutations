@@ -1,5 +1,5 @@
 """Flat image genomes and explicit genetic operators."""
-import copy, random, secrets
+import copy, json, random, secrets
 from .demo import catalog
 
 MODEL_ID = "stable-diffusion-v1-5/stable-diffusion-v1-5"
@@ -92,9 +92,9 @@ def reproduce(generation,review):
  if not parents: raise ValueError("All candidates were rejected. The search is paused.")
  run_seed=secrets.randbits(64)
  rng=random.Random(run_seed); weights=[(EVOLUTION_CONFIG["favourite_parent_weight"] if p["id"]==review.get("favourite_id") else EVOLUTION_CONFIG["other_parent_weight"]) if decisions[p["id"]]=="keep" else 1 for p in parents]; children=[]
- # A seed is part of the executable recipe. Do not let crossover collapse scarce
- # grid slots into exact reruns of an existing candidate or sibling.
- used_seeds={c["genome"]["gene"]["seed"] for c in generation["candidates"]}
+ # Preserve exact parent recipes across generations, but do not spend two slots
+ # in this generation on the same complete executable genome.
+ child_signatures=set()
  for _ in range(9):
   a,b=rng.choices(parents,weights=weights,k=2); gene=copy.deepcopy(a["genome"]["gene"]); inherited={}; ops=[{"type":"random_stream","seed":run_seed,"algorithm_version":EVOLUTION_VERSION}]
   for field in IMAGE_GENE_FIELDS:
@@ -103,12 +103,16 @@ def reproduce(generation,review):
    else: inherited[field]=a["id"]
    if rng.random()<EVOLUTION_CONFIG["mutation_rate"]:
     before=gene[field]; gene[field],detail=_mutate(field,gene[field],rng); ops.append({"type":"mutation","field":field,"before":before,"after":gene[field],"probability":EVOLUTION_CONFIG["mutation_rate"],"kernel":field,**detail})
-  if gene["seed"] in used_seeds:
+  signature=json.dumps(gene,sort_keys=True,separators=(",",":"))
+  if signature in child_signatures:
    before=gene["seed"]
    gene["seed"]=rng.getrandbits(32)
-   while gene["seed"] in used_seeds: gene["seed"]=rng.getrandbits(32)
-   ops.append({"type":"diversity_guard","field":"seed","before":before,"after":gene["seed"],"reason":"prevent duplicate render recipe"})
-  used_seeds.add(gene["seed"])
+   signature=json.dumps(gene,sort_keys=True,separators=(",",":"))
+   while signature in child_signatures:
+    gene["seed"]=rng.getrandbits(32)
+    signature=json.dumps(gene,sort_keys=True,separators=(",",":"))
+   ops.append({"type":"diversity_guard","field":"seed","before":before,"after":gene["seed"],"reason":"prevent identical siblings"})
+  child_signatures.add(signature)
   ops.insert(0,{"type":"inherit","fields":inherited})
   genome={"gene":gene,"source_prompt_id":a["genome"]["source_prompt_id"],"genes":copy.deepcopy(a["genome"].get("genes",{})),"scheduler":"LCMScheduler"}; sync_model_dependencies(genome)
   children.append({"genome":genome,"parents":list(dict.fromkeys([a["id"],*inherited.values()])),"operators":ops})

@@ -1,11 +1,12 @@
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from mutations_ui.demo import catalog
 from mutations_ui.feedback import ValidationError
 from mutations_ui.storage import Store
 from mutations_ui.generation import GenerationService
-from mutations_ui.genetics import MODEL_REGISTRY, initial_population, reproduce, validate_genome
+from mutations_ui.genetics import EVOLUTION_CONFIG, MODEL_REGISTRY, initial_population, reproduce, validate_genome
 
 
 class CatalogTests(unittest.TestCase):
@@ -32,7 +33,7 @@ class CatalogTests(unittest.TestCase):
             self.assertEqual(gene["adapter"], MODEL_REGISTRY[gene["model"]]["adapter"])
             self.assertTrue(validate_genome(child["genome"]))
 
-    def test_reproduction_does_not_repeat_parent_or_sibling_seeds(self):
+    def test_reproduction_preserves_parent_but_prevents_identical_siblings(self):
         candidates = initial_population(model_ids=["sd15-lcm"])
         generation = {"candidates": [{**candidate, "id": f"c{i}"} for i, candidate in enumerate(candidates)]}
         review = {"candidates": [
@@ -40,14 +41,15 @@ class CatalogTests(unittest.TestCase):
             for i in range(9)
         ], "favourite_id": "c0"}
 
-        children = reproduce(generation, review)
-        parent_seeds = {candidate["genome"]["gene"]["seed"] for candidate in generation["candidates"]}
-        child_seeds = [child["genome"]["gene"]["seed"] for child in children]
+        with patch.dict(EVOLUTION_CONFIG, {"mutation_rate": 0}):
+            children = reproduce(generation, review)
+        parent_gene = generation["candidates"][0]["genome"]["gene"]
+        child_genes = [child["genome"]["gene"] for child in children]
 
-        self.assertEqual(len(child_seeds), len(set(child_seeds)))
-        self.assertTrue(parent_seeds.isdisjoint(child_seeds))
-        for child in children:
-            self.assertTrue(any(op["type"] == "diversity_guard" for op in child["operators"]))
+        self.assertIn(parent_gene, child_genes)
+        self.assertEqual(len(child_genes), len({repr(sorted(gene.items())) for gene in child_genes}))
+        self.assertEqual(sum(any(op["type"] == "diversity_guard" for op in child["operators"])
+                             for child in children), 8)
 
     def test_retry_repairs_an_existing_incompatible_adapter(self):
         with tempfile.TemporaryDirectory() as root:
