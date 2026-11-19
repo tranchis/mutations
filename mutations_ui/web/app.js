@@ -8,7 +8,7 @@ const AXES = [
   ["specificity", "Specificity", "Is there a particular detail, tension, or event worth attending to?"],
 ];
 let generations = [], current = null, draft = null, detailID = null, files = [], busy = false;
-let toastTimer;
+let toastTimer, liveSource;
 
 function localRead(key) {
   try { return localStorage.getItem(key); } catch { return null; }
@@ -25,12 +25,42 @@ function toast(message, error = false) {
   toastTimer = setTimeout(() => { element.hidden = true; }, error ? 9000 : 4000);
 }
 async function api(path, options = {}) {
-  const response = await fetch(path, options);
-  const value = await response.json();
-  if (!response.ok) throw new Error(value.error || `Request failed (${response.status}).`);
-  return value;
+  const controller = new AbortController();
+  const {timeout: timeoutMs = 12000, ...fetchOptions} = options;
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(path, {...fetchOptions, signal:controller.signal});
+    const value = await response.json();
+    if (!response.ok) throw new Error(value.error || `Request failed (${response.status}).`);
+    return value;
+  } catch (error) {
+    if (error.name === "AbortError") throw new Error(`${path} timed out`);
+    throw error;
+  } finally { clearTimeout(timeout); }
 }
 const post = (path, value) => api(path, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(value)});
+async function getWithRetry(path, attempts = 4) {
+  let error;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try { return await api(path); }
+    catch (caught) {
+      error = caught;
+      if (attempt + 1 < attempts) await new Promise((resolve) => setTimeout(resolve, 750 * 2 ** attempt));
+    }
+  }
+  throw error;
+}
+async function postIdempotent(path, value, attempts = 3) {
+  let error;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try { return await post(path, value); }
+    catch (caught) {
+      error = caught;
+      if (attempt + 1 < attempts) await new Promise((resolve) => setTimeout(resolve, 750 * 2 ** attempt));
+    }
+  }
+  throw error;
+}
 
 function freshDraft(generation) {
   const review = generation.review;
@@ -92,6 +122,17 @@ function openGeneration(id) {
   $("#shuffle").disabled = false;
   localWrite("mutations:current", current.id);
   renderNavigation(); renderGrid(); renderStatus();
+  connectLive(current.id);
+}
+
+async function loadGeneration(id) {
+  const existing = generations.find((generation) => generation.id === id);
+  if (existing?.candidates) return openGeneration(id);
+  try {
+    const loaded = await getWithRetry(`/api/generations/${id}`);
+    generations = generations.map((generation) => generation.id === id ? loaded : generation);
+    openGeneration(id);
+  } catch (error) { toast(`Could not load this generation. ${error.message}`, true); }
 }
 
 function renderNavigation() {
@@ -106,7 +147,7 @@ function renderNavigation() {
 
 function mediaHTML(item, detail = false) {
   if (!item.media) return "";
-  const url = escapeHTML(item.media.url);
+  const url = escapeHTML(detail ? item.media.url : item.media.preview_data || item.media.preview_url || item.media.url);
   return item.media.mime.startsWith("video/")
     ? `<video src="${url}" ${detail ? "controls" : "muted"} playsinline preload="metadata" aria-label="Candidate video"></video>`
     : `<img src="${url}" alt="${detail ? "Candidate output for review" : "Candidate visual output"}" draggable="false">`;
@@ -125,6 +166,16 @@ function decisionsHTML(id, detailed = false) {
   return [["keep","＋","Keep"],["reject","−","Reject"],["undecided","?",detailed ? "Undecided" : ""]].map(([decision,symbol,label]) => `
     <button class="decision" data-candidate="${escapeHTML(id)}" data-decision="${decision}" aria-pressed="${value === decision}" aria-label="${label || "Undecided"}" title="${label || "Leave undecided"}" ${canReview() ? "" : "disabled"}><span aria-hidden="true">${symbol}</span>${label}</button>`).join("");
 }
+function cardHTML(id, index, reveal) {
+  const item = candidate(id), row = observation(id);
+  if (!item.media) return `<article class="candidate-card empty-card" data-card="${escapeHTML(id)}"><div class="media-container"><span class="empty-index">${String(index + 1).padStart(2,"0")}</span><span class="empty-label">${current.generation?.status === "paused" ? "PAUSED" : "WAITING TO GENERATE"}</span></div><div class="card-controls">New image · seed ${escapeHTML(item.genome.seed)}</div></article>`;
+  const annotated = row.note || Object.values(row.scores).some((score) => score !== null);
+  return `<article class="candidate-card ${row.decision === "keep" ? "kept" : row.decision === "reject" ? "rejected" : ""}" data-card="${escapeHTML(id)}" aria-label="Candidate ${index + 1}: ${row.decision}">
+    <div class="media-container">${mediaHTML(item)}<button class="media-open" data-inspect="${escapeHTML(id)}" aria-label="Inspect candidate ${index + 1}"></button><span class="candidate-index">${String(index + 1).padStart(2,"0")}</span><button class="media-expand" data-inspect="${escapeHTML(id)}" aria-label="Enlarge candidate ${index + 1}">↗</button>${item.media.mime.startsWith("video/") ? '<span class="video-label">▶ VIDEO</span>' : ""}${draft.favourite_id === id ? '<span class="favourite-badge">★ FAVOURITE</span>' : ""}</div>
+    ${reveal ? `<div class="card-identity">${identityHTML(item)}</div>` : ""}
+    <div class="card-controls"><div class="decisions">${decisionsHTML(id)}</div><button class="card-note ${annotated ? "annotated" : ""}" data-inspect="${escapeHTML(id)}" aria-label="${annotated ? "Edit" : "Add"} scores and notes for candidate ${index + 1}" title="Scores & notes">≡</button></div>
+  </article>`;
+}
 function renderGrid() {
   if (!current) {
     $("#candidate-grid").innerHTML = Array.from({length:9}, (_, i) => `
@@ -133,17 +184,7 @@ function renderGrid() {
     $("#shuffle").disabled = true;
     return;
   }
-  const reveal = $("#reveal-metadata").checked;
-  $("#candidate-grid").innerHTML = draft.display_order.map((id, index) => {
-    const item = candidate(id), row = observation(id);
-    if (!item.media) return `<article class="candidate-card empty-card" data-card="${escapeHTML(id)}"><div class="media-container"><span class="empty-index">${String(index + 1).padStart(2,"0")}</span><span class="empty-label">${current.generation?.status === "paused" ? "PAUSED" : "WAITING TO GENERATE"}</span></div><div class="card-controls">New image · seed ${escapeHTML(item.genome.seed)}</div></article>`;
-    const annotated = row.note || Object.values(row.scores).some((score) => score !== null);
-    return `<article class="candidate-card ${row.decision === "keep" ? "kept" : row.decision === "reject" ? "rejected" : ""}" data-card="${escapeHTML(id)}" aria-label="Candidate ${index + 1}: ${row.decision}">
-      <div class="media-container">${mediaHTML(item)}<button class="media-open" data-inspect="${escapeHTML(id)}" aria-label="Inspect candidate ${index + 1}"></button><span class="candidate-index">${String(index + 1).padStart(2,"0")}</span><button class="media-expand" data-inspect="${escapeHTML(id)}" aria-label="Enlarge candidate ${index + 1}">↗</button>${item.media.mime.startsWith("video/") ? '<span class="video-label">▶ VIDEO</span>' : ""}${draft.favourite_id === id ? '<span class="favourite-badge">★ FAVOURITE</span>' : ""}</div>
-      ${reveal ? `<div class="card-identity">${identityHTML(item)}</div>` : ""}
-      <div class="card-controls"><div class="decisions">${decisionsHTML(id)}</div><button class="card-note ${annotated ? "annotated" : ""}" data-inspect="${escapeHTML(id)}" aria-label="${annotated ? "Edit" : "Add"} scores and notes for candidate ${index + 1}" title="Scores & notes">≡</button></div>
-    </article>`;
-  }).join("");
+  $("#candidate-grid").innerHTML = draft.display_order.map((id, index) => cardHTML(id, index, $("#reveal-metadata").checked)).join("");
 }
 function renderStatus() {
   if (!current) return;
@@ -297,7 +338,7 @@ async function startDemo(preset = "overview") {
   $("#new-generation").disabled = true;
   try {
     const modelId = $("#model-choice")?.value || "all";
-    const generation = await post("/api/demo", {preset, ...(modelId === "all" ? {} : {model_ids: [modelId]})});
+    const generation = await postIdempotent("/api/demo", {preset, request_id:crypto.randomUUID(), ...(modelId === "all" ? {} : {model_ids: [modelId]})});
     generations.unshift(generation);
     openGeneration(generation.id);
     $("#source-panel").hidden = true;
@@ -311,7 +352,7 @@ document.addEventListener("click", (event) => {
   const close = event.target.closest("[data-close]");
   if (close) return $(`#${close.dataset.close}`).close();
   const nav = event.target.closest("[data-generation]");
-  if (nav) return openGeneration(nav.dataset.generation);
+  if (nav) return loadGeneration(nav.dataset.generation);
   const preset = event.target.closest("[data-preset]");
   if (preset) return startDemo(preset.dataset.preset);
   const decision = event.target.closest("[data-decision]");
@@ -372,7 +413,7 @@ for (const action of ["pause", "retry"]) {
     try {
       const updated = await post(`/api/generations/${id}/${action}`, {});
       generations = generations.map((g) => g.id === id ? updated : g);
-      if (current.id === id) { current = updated; renderGrid(); renderStatus(); }
+      if (current.id === id) { current = updated; renderGrid(); renderStatus(); connectLive(id); }
     } catch (error) { toast(error.message, true); }
     finally { $(`#${action}-generation`).disabled = false; }
   });
@@ -393,40 +434,78 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
+function applySnapshot(updated) {
+  if (!current || updated.id !== current.id) return;
+  const previous = current;
+  generations = generations.map((generation) => generation.id === updated.id ? updated : generation);
+  current = updated;
+  const grid = $("#candidate-grid");
+  for (const item of updated.candidates) {
+    const old = previous.candidates.find((candidate) => candidate.id === item.id);
+    if (item.media?.url === old?.media?.url) continue;
+    const index = draft.display_order.indexOf(item.id);
+    if (index < 0 || !grid.children[index]) continue;
+    const template = document.createElement("template");
+    template.innerHTML = cardHTML(item.id, index, $("#reveal-metadata").checked);
+    grid.children[index].replaceWith(template.content.firstElementChild);
+  }
+  renderNavigation(); renderStatus();
+}
+
+function connectLive(id) {
+  liveSource?.close();
+  liveSource = null;
+  if (!current || current.id !== id || !["queued","preparing","generating"].includes(current.generation?.status)) return;
+  const source = new EventSource(`/api/generations/${id}/events`);
+  liveSource = source;
+  source.addEventListener("snapshot", (event) => {
+    if (source !== liveSource) return;
+    const updated = JSON.parse(event.data);
+    applySnapshot(updated);
+    if (!["queued","preparing","generating"].includes(updated.generation?.status)) {
+      source.close();
+      if (liveSource === source) liveSource = null;
+    }
+  });
+  source.addEventListener("progress", (event) => {
+    if (source !== liveSource || current?.id !== id) return;
+    current.generation = JSON.parse(event.data);
+    generations = generations.map((generation) => generation.id === id ? {...generation, generation:current.generation} : generation);
+    renderNavigation(); renderStatus();
+  });
+  source.onerror = () => {
+    if (source === liveSource) $("#save-message").textContent = "Reconnecting to live generation updates…";
+  };
+}
+
 async function start() {
   renderGrid();
-  try {
-    const [state, research, modelState] = await Promise.all([
-      api("/api/generations"), api("/api/catalog"),
-      api("/api/models").catch(() => ({models: [{id: "sd15-lcm", label: "Stable Diffusion 1.5 + LCM"}]}))
-    ]);
-    ({generations} = state);
+  let delay = 750;
+  while (true) {
+    try {
+      const state = await api("/api/bootstrap");
+      generations = state.generations;
+      if (state.generation) {
+        generations = generations.map((generation) => generation.id === state.generation.id ? state.generation : generation);
+      }
+      const research = state.catalog, modelState = {models:state.models};
     $("#model-choice").innerHTML = `<option value="all">All registered models (heterogeneous round)</option>` + modelState.models.map((model) => `<option value="${escapeHTML(model.id)}">${escapeHTML(model.label)}</option>`).join("");
     $("#model-choice").value = "all";
     $("#research-presets").innerHTML = research.presets.map((preset) => `<button class="research-preset" data-preset="${escapeHTML(preset.id)}"><strong>${escapeHTML(preset.title)}</strong><span>${escapeHTML(preset.question)}</span><span aria-hidden="true">↗</span></button>`).join("");
     $("#prompt-library").innerHTML = research.prompts.map((prompt) => `<article><strong>${escapeHTML(prompt.id)}</strong><p>${escapeHTML(prompt.text)}</p></article>`).join("");
     renderNavigation();
-    if (generations.length) {
+      if (state.generation) {
       const remembered = localRead("mutations:current");
-      const rememberedGeneration = generations.find((g) => g.id === remembered);
-      const preferred = rememberedGeneration && rememberedGeneration.demo?.mode !== "archive-replay" && !rememberedGeneration.is_demo ? rememberedGeneration : generations.find((g) => g.demo?.mode === "local-diffusion") || generations[0];
-      openGeneration(preferred.id);
+        const rememberedGeneration = generations.find((g) => g.id === remembered && g.candidates);
+        openGeneration(rememberedGeneration?.id || state.generation.id);
+      }
+      return;
+    } catch (error) {
+      $("#generation-title").textContent = "Connecting to the selection room…";
+      $("#generation-subtitle").textContent = `${error.message}. Retrying automatically.`;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      delay = Math.min(delay * 2, 8000);
     }
-  } catch (error) { toast(`Could not connect to the local service. ${error.message}`, true); }
+  }
 }
 start();
-let polling = false;
-setInterval(async () => {
-  if (polling || busy || document.hidden || !generations.some((g) => ["queued","preparing","generating"].includes(g.generation?.status))) return;
-  polling = true;
-  try {
-    const state = await api("/api/generations");
-    const updated = state.generations.find((g) => g.id === current?.id);
-    const changed = updated && JSON.stringify(updated.generation) !== JSON.stringify(current.generation);
-    generations = state.generations;
-    if (updated) current = updated;
-    renderNavigation();
-    if (changed) { renderGrid(); renderStatus(); }
-  } catch (error) { /* Preserve the current view and draft during a temporary disconnect. */ }
-  finally { polling = false; }
-}, 1000);

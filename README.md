@@ -64,7 +64,7 @@ Drafts are saved in your browser. Submitted feedback is stored in SQLite with ap
 
 Exports derive keep-over-explicit-reject pairs, plus favourite-over-other-keep pairs. Undecided candidates are unlabeled. An unrated rubric dimension is `null`; zero is an actual rating. Pairwise rows from one review share context and are **not independent votes**. Only the latest review supplies training comparisons; earlier revisions remain in the history. Preserve review and lineage grouping when fitting or validating an evaluator.
 
-The service uses the Python standard library, plain HTML/CSS/JavaScript and SQLite around a direct Diffusers worker. It listens on loopback only. There is no ComfyUI dependency or remote hosting requirement. The demo generates still images from a selectable local model registry; it does not claim automatic video generation, identity-LoRA training or a learned fitness model.
+The service uses the Python standard library, plain HTML/CSS/JavaScript and SQLite around a direct Diffusers worker. It listens on loopback only. The initial page is delivered as one self-contained response; generation updates and grid previews then arrive over one reconnecting event stream. Full-resolution media is fetched only when opened. There is no ComfyUI dependency or remote hosting requirement. The demo generates still images from a selectable local model registry; it does not claim automatic video generation, identity-LoRA training or a learned fitness model.
 
 ## Advanced options
 
@@ -74,8 +74,12 @@ python3 -m mutations_ui serve --port 8766
 python3 -m mutations_ui --data-dir /path/to/experiment serve
 ```
 
+The terminal logs each HTTP request with status, response size and elapsed time, plus generation milestones. This makes it possible to distinguish a request that reached the application from one that failed before it arrived.
+
 | Endpoint | Purpose |
 | --- | --- |
+| `GET /api/bootstrap` | Compact startup snapshot: navigation summaries, selected generation, catalog and models. |
+| `GET /api/generations/{id}/events` | Reconnecting live stream of generation snapshots and progress. |
 | `GET /api/catalog` | Included prompts and ready-made starting points. |
 | `POST /api/demo` | Start a fresh demo; optional `preset`: `overview`, `style`, or `prompts`. |
 | `POST /api/generations/{id}/next` | Continue a submitted demo review with `expected_revision`. |

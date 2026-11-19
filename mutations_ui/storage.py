@@ -161,6 +161,17 @@ class Store:
                 "FROM reviews GROUP BY generation_id) latest USING (generation_id, revision)")}
         return [self._generation(row, reviews.get(row["id"])) for row in rows]
 
+    def generation_summaries(self):
+        """Small navigation records; candidate genomes and media stay out of startup."""
+        summaries = []
+        for generation in self.generations():
+            summary = {key: generation.get(key) for key in
+                       ("id", "ordinal", "title", "is_demo", "demo", "generation")}
+            summary["review"] = ({"revision": generation["review"]["revision"]}
+                                 if generation.get("review") else None)
+            summaries.append(summary)
+        return summaries
+
     def save_review(self, gid, value):
         generation = self.get_generation(gid)
         if generation.get("generation", {}).get("status", "ready") != "ready":

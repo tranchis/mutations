@@ -6,6 +6,7 @@ import unittest
 import subprocess
 import sys
 import io
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import redirect_stdout
 from unittest.mock import patch
 from pathlib import Path
@@ -13,7 +14,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from mutations_ui.feedback import ValidationError, preference_pairs, validate_review
-from mutations_ui.server import make_server
+from mutations_ui.server import make_server, application_shell
 from mutations_ui.storage import ConflictError, Store
 
 
@@ -157,6 +158,24 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(generation["candidates"][0]["parents"], ["g1:parent"])
 
 
+class HandlerTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.store = Store(self.temp.name)
+
+    def test_application_shell_is_one_self_contained_response(self):
+        response, csp = application_shell()
+        self.assertIn("<style nonce=", response)
+        self.assertIn("<script nonce=", response)
+        self.assertNotIn('src="/app.js"', response)
+        self.assertNotIn('href="/styles.css"', response)
+        self.assertIn("nonce-", csp)
+
+    def test_bootstrap_contains_catalog_models_and_summaries(self):
+        self.assertEqual(self.store.generation_summaries(), [])
+
+
 class HTTPTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -205,6 +224,30 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(len(json.loads(data)["prompts"]), 15)
         self.assertEqual(self.request("/api/health")[0], 200)
 
+    def test_bootstrap_is_compact_and_live_stream_sends_snapshot(self):
+        status, _, data = self.request("/api/bootstrap")
+        self.assertEqual(status, 200)
+        bootstrap = json.loads(data)
+        self.assertIn("generation", bootstrap)
+        self.assertIn("catalog", bootstrap)
+        self.assertIn("models", bootstrap)
+        self.assertTrue(all("candidates" not in summary for summary in bootstrap["generations"]
+                            if summary["id"] != bootstrap["generation"]["id"]))
+        _, _, created = self.request("/api/demo", {"preset": "overview"})
+        gid = json.loads(created)["id"]
+        self.server.generator.update(gid, lambda payload: payload["generation"].update(
+            status="ready", completed=9, message="fixture ready"))
+        status, headers, stream = self.request(f"/api/generations/{gid}/events")
+        self.assertEqual(status, 200)
+        self.assertEqual(headers.get_content_type(), "text/event-stream")
+        self.assertIn(b"event: snapshot", stream)
+        self.assertIn(b'"status":"ready"', stream)
+
+    def test_parallel_page_requests_are_served(self):
+        with ThreadPoolExecutor(max_workers=20) as pool:
+            statuses = list(pool.map(lambda _: self.request("/")[0], range(40)))
+        self.assertEqual(statuses, [200] * 40)
+
     def test_demo_continuation_http_round_trip(self):
         status, _, data = self.request("/api/demo", {"preset": "style"})
         self.assertEqual(status, 201)
@@ -228,6 +271,12 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(len(child["candidates"]), 9)
         repeated = self.request(f"/api/generations/{generation['id']}/next", {"expected_revision": 1})
         self.assertEqual(json.loads(repeated[2])["id"], child["id"])
+
+    def test_start_session_is_idempotent(self):
+        request = {"preset": "overview", "request_id": "request-12345678"}
+        first = json.loads(self.request("/api/demo", request)[2])
+        second = json.loads(self.request("/api/demo", request)[2])
+        self.assertEqual(first["id"], second["id"])
 
     def test_launcher_reuses_an_existing_workspace_server(self):
         process = subprocess.run([sys.executable, "-m", "mutations_ui", "--data-dir", self.temp.name,

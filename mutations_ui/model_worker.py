@@ -80,7 +80,11 @@ def main():
         target = Path(item["output"])
         target.parent.mkdir(parents=True, exist_ok=True)
         output.images[0].save(target)
-        emit("image", slot=slot, path=str(target), execution={"device": device, "dtype": str(dtype),
+        preview = target.with_suffix(".preview.jpg")
+        thumbnail = output.images[0].copy()
+        thumbnail.thumbnail((320, 320))
+        thumbnail.convert("RGB").save(preview, format="JPEG", quality=65, optimize=True)
+        emit("image", slot=slot, path=str(target), preview_path=str(preview), execution={"device": device, "dtype": str(dtype),
              "model_id": model_id, "model_revision": revision, "adapter_revision": adapter_revision,
              "torch_version": torch.__version__, "diffusers_version": diffusers.__version__,
              "elapsed_seconds": round(time.monotonic() - start, 3),

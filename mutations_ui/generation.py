@@ -5,6 +5,8 @@ import hashlib
 import subprocess
 import threading
 import uuid
+import re
+from datetime import datetime
 from pathlib import Path
 
 from .demo import catalog
@@ -22,6 +24,10 @@ class GenerationService:
         self.lock = threading.RLock()
         self.thread = self.process = self.active_id = None
         self.closed = threading.Event()
+
+    @staticmethod
+    def _log(message):
+        print(f"[{datetime.now().astimezone().isoformat(timespec='seconds')}] {message}", flush=True)
 
     def _insert(self, db, population, preset, session_id=None, round_number=1, parent=None):
         preset_info = next((p for p in catalog()["presets"] if p["id"] == preset), None)
@@ -60,13 +66,23 @@ class GenerationService:
         self.wake()
         return gid
 
-    def start_session(self, preset="overview", model_ids=None):
+    def start_session(self, preset="overview", model_ids=None, request_id=None):
         try:
             population = initial_population(preset, model_ids)
         except ValueError as exc:
             raise ValidationError(str(exc)) from exc
+        if request_id is not None and (not isinstance(request_id, str) or not re.fullmatch(r"[A-Za-z0-9-]{8,80}", request_id)):
+            raise ValidationError("request_id must be an 8–80 character identifier.")
         with self.store.connect() as db:
-            gid = self._insert(db, population, preset)
+            db.execute("BEGIN IMMEDIATE")
+            state_key = f"demo-request:{request_id}" if request_id else None
+            existing = db.execute("SELECT value FROM app_state WHERE key=?", (state_key,)).fetchone() if state_key else None
+            if existing:
+                gid = existing["value"]
+            else:
+                gid = self._insert(db, population, preset)
+                if state_key:
+                    db.execute("INSERT INTO app_state VALUES (?, ?)", (state_key, gid))
         self.wake()
         return self.store.get_generation(gid)
 
@@ -151,9 +167,11 @@ class GenerationService:
                     self.thread = None
                     return
                 self.active_id = pending[0]["id"]
+                self._log(f"generation {self.active_id[:8]} started ({pending[0]['generation']['completed']}/9 complete)")
             try:
                 self._render(pending[0])
             except Exception as exc:
+                self._log(f"generation {self.active_id[:8] if self.active_id else 'unknown'} failed: {exc}")
                 if not self.closed.is_set() and self.store.get_generation(self.active_id)["generation"]["status"] != "paused":
                     self.update(self.active_id, lambda p: p["generation"].update(
                         status="error", error=str(exc)[:1200], message="Generation stopped. Retry to resume unfinished images."))
@@ -168,6 +186,7 @@ class GenerationService:
         gid = generation["id"]
         def progress(message):
             self.update(gid, lambda p: p["generation"].update(message=message))
+            self._log(f"generation {gid[:8]}: {message}")
         with self.lock:
             current = self.store.get_generation(gid)
             if current["generation"]["status"] == "paused" or self.closed.is_set():
@@ -221,6 +240,9 @@ class GenerationService:
                         except Exception as exc:
                             raise RuntimeError(f"Invalid image output: {exc}") from exc
                         media = self.store.add_asset(f"generated-{event['slot']+1:02}.png", data)
+                        if event.get("preview_path"):
+                            thumbnail = self.store.add_asset("preview.jpg", Path(event["preview_path"]).read_bytes())
+                            media["preview_url"] = thumbnail["url"]
                         event["execution"]["output_sha256"] = hashlib.sha256(data).hexdigest()
                         def record(payload):
                             payload["candidates"][event["slot"]].update(media=media, execution=event["execution"])
@@ -232,6 +254,7 @@ class GenerationService:
                             payload["validation"]["duplicate_genes"] = sorted({g for g in genes if genes.count(g) > 1})
                             payload["generation"]["completed"] = sum(c["media"] is not None for c in payload["candidates"])
                         self.update(gid, record)
+                        self._log(f"generation {gid[:8]}: image {event['slot'] + 1}/9 complete")
                     elif event.get("event") == "error":
                         error_message = event["message"]
             finally:
@@ -250,6 +273,7 @@ class GenerationService:
                 warnings.append("duplicate image outputs")
             payload["generation"].update(status="ready", message="Nine newly generated images are ready", error=None)
         self.update(gid, complete)
+        self._log(f"generation {gid[:8]} ready")
 
     def close(self):
         self.closed.set()
