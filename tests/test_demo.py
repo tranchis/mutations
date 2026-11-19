@@ -32,6 +32,23 @@ class CatalogTests(unittest.TestCase):
             self.assertEqual(gene["adapter"], MODEL_REGISTRY[gene["model"]]["adapter"])
             self.assertTrue(validate_genome(child["genome"]))
 
+    def test_reproduction_does_not_repeat_parent_or_sibling_seeds(self):
+        candidates = initial_population(model_ids=["sd15-lcm"])
+        generation = {"candidates": [{**candidate, "id": f"c{i}"} for i, candidate in enumerate(candidates)]}
+        review = {"candidates": [
+            {"candidate_id": f"c{i}", "decision": "keep" if i == 0 else "reject"}
+            for i in range(9)
+        ], "favourite_id": "c0"}
+
+        children = reproduce(generation, review)
+        parent_seeds = {candidate["genome"]["gene"]["seed"] for candidate in generation["candidates"]}
+        child_seeds = [child["genome"]["gene"]["seed"] for child in children]
+
+        self.assertEqual(len(child_seeds), len(set(child_seeds)))
+        self.assertTrue(parent_seeds.isdisjoint(child_seeds))
+        for child in children:
+            self.assertTrue(any(op["type"] == "diversity_guard" for op in child["operators"]))
+
     def test_retry_repairs_an_existing_incompatible_adapter(self):
         with tempfile.TemporaryDirectory() as root:
             service = GenerationService(Store(root), auto_start=False)
