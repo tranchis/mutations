@@ -44,6 +44,12 @@ def sync_genome(genome):
  genome.update(model=model["model"],model_id=gene["model"],prompt=gene["prompt"],seed=gene["seed"],steps=gene["steps"],guidance=gene["guidance"],width=512,height=512,adapters=([{"model":gene["adapter"],"scale":gene["adapter_scale"]}] if gene["adapter"] else []))
  return genome
 
+def sync_model_dependencies(genome):
+ """Keep genes that are structurally tied to the selected model compatible."""
+ gene=genome["gene"]; model=MODEL_REGISTRY[gene["model"]]
+ gene["adapter"]=model["adapter"]
+ return sync_genome(genome)
+
 def available_models(): return [{"id":k,**v} for k,v in MODEL_REGISTRY.items()]
 
 def initial_population(preset="overview",model_ids=None):
@@ -94,8 +100,7 @@ def reproduce(generation,review):
    else: inherited[field]=a["id"]
    if rng.random()<EVOLUTION_CONFIG["mutation_rate"]:
     before=gene[field]; gene[field],detail=_mutate(field,gene[field],rng); ops.append({"type":"mutation","field":field,"before":before,"after":gene[field],"probability":EVOLUTION_CONFIG["mutation_rate"],"kernel":field,**detail})
-  ops.insert(0,{"type":"inherit","fields":inherited}); model=MODEL_REGISTRY[gene["model"]]
-  if gene["adapter"] is None and model["adapter"]: gene["adapter"]=model["adapter"]
-  genome={"gene":gene,"source_prompt_id":a["genome"]["source_prompt_id"],"genes":copy.deepcopy(a["genome"].get("genes",{})),"scheduler":"LCMScheduler"}; sync_genome(genome)
+  ops.insert(0,{"type":"inherit","fields":inherited})
+  genome={"gene":gene,"source_prompt_id":a["genome"]["source_prompt_id"],"genes":copy.deepcopy(a["genome"].get("genes",{})),"scheduler":"LCMScheduler"}; sync_model_dependencies(genome)
   children.append({"genome":genome,"parents":list(dict.fromkeys([a["id"],*inherited.values()])),"operators":ops})
  return children

@@ -11,7 +11,7 @@ from pathlib import Path
 
 from .demo import catalog
 from .feedback import ValidationError
-from .genetics import initial_population, reproduce, available_models, MODEL_REGISTRY, EVOLUTION_CONFIG, EVOLUTION_VERSION, validate_genome
+from .genetics import initial_population, reproduce, available_models, MODEL_REGISTRY, EVOLUTION_CONFIG, EVOLUTION_VERSION, validate_genome, sync_model_dependencies
 from .runtime import PROJECT, ensure_runtime, environment
 from .storage import ConflictError, now
 
@@ -135,7 +135,19 @@ class GenerationService:
         if generation["generation"]["status"] not in ("error", "paused", "queued"):
             raise ValidationError("This generation is already running or complete.")
         with self.lock:
-            self.update(gid, lambda p: p["generation"].update(status="queued", error=None, message="Resuming unfinished images"))
+            def repair_and_queue(payload):
+                repaired = 0
+                for candidate in payload["candidates"]:
+                    before = candidate["genome"]["gene"].get("adapter")
+                    sync_model_dependencies(candidate["genome"])
+                    if candidate["genome"]["gene"].get("adapter") != before:
+                        repaired += 1
+                        candidate.setdefault("operators", []).append({"type": "compatibility_repair", "field": "adapter",
+                                                                      "before": before,
+                                                                      "after": candidate["genome"]["gene"].get("adapter")})
+                payload["generation"].update(status="queued", error=None,
+                                             message=f"Resuming unfinished images ({repaired} incompatible recipes repaired)" if repaired else "Resuming unfinished images")
+            self.update(gid, repair_and_queue)
         self.wake()
         return self.store.get_generation(gid)
 
