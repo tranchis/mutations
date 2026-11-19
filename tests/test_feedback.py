@@ -133,18 +133,6 @@ class StoreTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             self.store.save_review(self.generation["id"], value)
 
-    def test_demo_excluded_from_training_export(self):
-        demo = self.store.create_demo()
-        value = review_for(demo)
-        value["candidates"][0]["decision"] = "keep"
-        value["candidates"][1]["decision"] = "reject"
-        self.store.save_review(demo["id"], value)
-        self.assertEqual(len(self.store.export()["generations"]), 1)
-        self.assertEqual(self.store.export()["comparisons"], [])
-        included = self.store.export(include_demo=True)
-        self.assertEqual(len(included["generations"]), 2)
-        self.assertTrue(included["comparisons"][0]["is_demo"])
-
     def test_asset_name_cannot_choose_storage_path(self):
         asset = self.store.add_asset("../../portrait.png", b"image")
         self.assertEqual(asset["name"], "portrait.png")

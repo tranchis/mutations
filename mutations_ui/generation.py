@@ -33,7 +33,7 @@ class GenerationService:
                        "label": f"{MODEL_REGISTRY[item['genome'].get('model_id', 'sd15-lcm')]['label']} · seed {item['genome']['seed']}",
                        "media": None, "phenotype": {"status": "queued", "assets": [], "execution": None},
                        "evaluation": None,
-                       "provenance": {"kind": "new_model_inference", "source_prompts": "main.pdf, appendix A"}}
+                       "provenance": {"kind": "new_model_inference", "source_prompts": "local prompt catalog"}}
                       for i, item in enumerate(population)]
         payload = {"title": "First generated variations" if round_number == 1 else f"New descendants · round {round_number}",
                    "experiment": "My Word · local image generation", "prompt": preset_info["question"],
@@ -85,7 +85,7 @@ class GenerationService:
                 raise ConflictError("The submitted feedback changed. Reload before continuing.")
             generation = self.store._generation(row, review_row)
             if generation.get("demo", {}).get("mode") != LIVE_MODE:
-                raise ValidationError("This is an archived reference. Start a new generation to create images.")
+                raise ValidationError("This generation is not a live image-generation session.")
             if generation["generation"]["status"] != "ready":
                 raise ValidationError("Wait until all nine images have been generated.")
             existing = db.execute("SELECT child_id FROM demo_continuations WHERE generation_id=? AND review_revision=?", (gid, expected_revision)).fetchone()

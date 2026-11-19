@@ -132,8 +132,7 @@ class Store:
         return self.get_generation(gid)
 
     def create_demo(self, preset="overview"):
-        from .demo import start_session
-        return start_session(self, preset)
+        raise ValidationError("Legacy archive demos are not part of the live generation workflow. Use GenerationService.start_session().")
 
     @staticmethod
     def _generation(row, review_row):

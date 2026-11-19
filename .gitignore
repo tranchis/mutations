@@ -6,5 +6,6 @@ __pycache__/
 *.pdf
 *.md
 !README.md
-demo/
+/demo/
+/mutations_ui/demo/media/
 

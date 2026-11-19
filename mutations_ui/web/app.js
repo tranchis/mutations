@@ -83,7 +83,7 @@ function openGeneration(id) {
   $("#generation-number").textContent = String(current.ordinal).padStart(2, "0");
   $("#generation-subtitle").textContent = current.demo ? `Round ${current.demo.round} · choose what interests you, then continue` : `${current.experiment} · 9 candidates · select one, several, or none`;
   $("#example-banner").hidden = !current.demo;
-  $("#example-banner").innerHTML = current.demo?.mode === "local-diffusion" ? '<span>LIVE LOCAL GENERATION</span> Stable Diffusion 1.5 + LCM · 512 × 512 · each candidate is rendered from its own recipe and seed.' : '<span>ARCHIVED REFERENCE</span> Existing research material. Use Generate new session to create new images.';
+  $("#example-banner").innerHTML = '<span>LIVE LOCAL GENERATION</span> Each candidate is rendered from its own image recipe and seed.';
   $("#source-toggle").disabled = false;
   $("#source-prompt").textContent = current.prompt || "No source prompt provided.";
   $("#export-feedback").href = current.is_demo ? "/api/export?include_demo=1" : "/api/export";

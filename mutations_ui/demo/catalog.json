@@ -1,0 +1,98 @@
+{
+  "version": 1,
+  "title": "Mutations of My Word",
+  "prompts": [
+    {
+      "id": "MyWord_02A",
+      "text": "a medical doctor talking to the camera, looking at the camera, sitting on a red chair, yellow background, wide shot, oil painting by delacroix, 4k, portrait",
+      "variant": "original"
+    },
+    {
+      "id": "MyWord_02B",
+      "text": "a female medical doctor talking to the camera, looking at the camera, sitting on a red chair, yellow background, wide shot, oil painting by delacroix, 4k, portrait",
+      "variant": "original"
+    },
+    {
+      "id": "MyWord_02C",
+      "text": "a wise 55-year-old black female walking back to the camera, surrounded by birds flying, surrounded by flowers, looking at the camera, sitting on a red chair, yellow background, close shot, oil painting by tamara natalie madden, 4k, trending in artstation, portrait",
+      "variant": "original"
+    },
+    {
+      "id": "MyWord_05A",
+      "text": "a wise 55-year-old black female, in a ann lowe night dress, close shot, oil painting by lynette yiadom-boakye, 4k, trending in artstation, portrait",
+      "variant": "original"
+    },
+    {
+      "id": "MyWord_05B",
+      "text": "a wise 55-year-old black female, in a ann lowe night dress, dancing, close shot, oil painting by lynette yiadom-boakye, 4k, trending in artstation, portrait",
+      "variant": "original"
+    },
+    {
+      "id": "MyWord_07A",
+      "text": "a wise 55-year-old black female in front of a tamara natalie madden painting, yellow background, close shot, oil painting by lynette yiadom-boakye, 4k, trending in artstation, portrait",
+      "variant": "original"
+    },
+    {
+      "id": "MyWord_07B",
+      "text": "a wise 55-year-old black female in front of a tamara natalie madden painting, surrounded by birds, yellow background, close shot, oil painting by lynette yiadom-boakye, 4k, trending in artstation, portrait",
+      "variant": "original"
+    },
+    {
+      "id": "MyWord_02A_sp",
+      "text": "a medical doctor talking to the camera, looking at the camera, sitting on a red chair, yellow background, wide shot, 4k, portrait",
+      "variant": "without_painterly_instruction"
+    },
+    {
+      "id": "MyWord_02B_sp",
+      "text": "a female medical doctor talking to the camera, looking at the camera, sitting on a red chair, yellow background, wide shot, 4k, portrait",
+      "variant": "without_painterly_instruction"
+    },
+    {
+      "id": "MyWord_02C_sp",
+      "text": "a wise 55-year-old black female walking back to the camera, surrounded by birds flying, surrounded by flowers, looking at the camera, sitting on a red chair, yellow background, close shot, 4k, trending in artstation, portrait",
+      "variant": "without_painterly_instruction"
+    },
+    {
+      "id": "MyWord_05A_sp",
+      "text": "a wise 55-year-old black female, in a ann lowe night dress, close shot, 4k, trending in artstation, portrait",
+      "variant": "without_painterly_instruction"
+    },
+    {
+      "id": "MyWord_05B_sp",
+      "text": "a wise 55-year-old black female, in a ann lowe night dress, dancing, close shot, 4k, trending in artstation, portrait",
+      "variant": "without_painterly_instruction"
+    },
+    {
+      "id": "MyWord_07A_sp",
+      "text": "a wise 55-year-old black female in front of a tamara natalie madden painting, yellow background, close shot, 4k, trending in artstation, portrait",
+      "variant": "without_painterly_instruction"
+    },
+    {
+      "id": "MyWord_07B_sp",
+      "text": "a wise 55-year-old black female in front of a tamara natalie madden painting, surrounded by birds, yellow background, close shot, 4k, trending in artstation, portrait",
+      "variant": "without_painterly_instruction"
+    },
+    {
+      "id": "control",
+      "text": "two persons",
+      "variant": "control"
+    }
+  ],
+  "presets": [
+    {
+      "id": "overview",
+      "title": "First impressions",
+      "question": "Which images open a direction worth pursuing?"
+    },
+    {
+      "id": "style",
+      "title": "Painting, photography, and the familiar",
+      "question": "Where does a painterly instruction survive, dissolve, or become something else?"
+    },
+    {
+      "id": "prompts",
+      "title": "One model, different instructions",
+      "question": "What changes when the scene, action, or pictorial reference changes?"
+    }
+  ]
+}

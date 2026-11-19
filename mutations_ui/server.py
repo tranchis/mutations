@@ -84,11 +84,6 @@ def make_handler(store, generator):
                 return self.send(200, catalog())
             if path == "/api/models":
                 return self.send(200, {"models": available_models()})
-            if path == "/research/main.pdf":
-                report = Path(__file__).resolve().parent.parent / "main.pdf"
-                if report.is_file():
-                    return self.send(200, report.read_bytes(), "application/pdf")
-                return self.send(404, {"error": "The original report is not present in this checkout."})
             if path == "/api/generations":
                 return self.send(200, {"generations": store.generations()})
             match = re.fullmatch(r"/api/generations/([a-f0-9]{32})", path)

@@ -1,6 +1,6 @@
 # Mutations — selection room
 
-A ready-to-use interactive demo of **Mutations of My Word**. The first nine research images, original prompts, model names and source references are already included.
+A ready-to-use interactive demo of **Mutations of My Word**. The prompt catalog and three starting questions are included; every candidate is generated locally.
 
 ## Start
 
@@ -18,13 +18,13 @@ The application opens your browser automatically. On first launch it creates a p
 2. Optionally open an image to add a reason, score its relationship to the work, productive departure or specificity, or choose a favourite. Scores and reviewer name are optional.
 3. Click **Save & next nine**. Your choices are recorded and guide the next batch automatically.
 
-Each round is a real local inference job: nine candidates are rendered at 512×512. Initial seeds are random; descendant seeds are treated as an ordinary genome variable, subject to the same configured crossover and mutation operators as the other variables. **Keep** is positive parent evidence, **undecided** is neutral baseline evidence, and **reject** explicitly excludes a candidate; at least one keep is required to advance. Crossover and prompt/lighting/composition/model/seed mutations produce the next recipes. Every image records its seed, exact recipe, execution device and parent IDs. Use **Pause** and **Retry** to stop/resume a job; completed images are retained. **Start fresh demo** begins another session and retains earlier history. The bundled report stills remain available as an immutable reference archive, but they are not replayed as new candidates.
+Each round is a real local inference job: nine candidates are rendered at 512×512. Initial seeds are random; descendant seeds are treated as an ordinary genome variable, subject to the same configured crossover and mutation operators as the other variables. **Keep** is positive parent evidence, **undecided** is neutral baseline evidence, and **reject** explicitly excludes a candidate. Crossover and prompt/model/seed mutations produce the next recipes. Every image records its seed, exact recipe, execution device and parent IDs. Use **Pause** and **Retry** to stop/resume a job; completed images are retained. **Start new session** begins another population and retains earlier history.
 
 Each individual has a broad state representation: an executable `genome` containing generator, conditioning, references, ordered program operations, temporal state and constraints; a `phenotype` containing rendered assets and execution metadata; ancestry and variation operators; and an `evaluation` containing the latest human fitness observation. The current worker implements the `generate → image` operation, while the representation is ready for multi-stage image/video programs.
 
-**Source & context** contains the research questions, three ready-made starting points, the full prompt library, and a link to the report. **Reveal identities** shows model and prompt labels; the image detail includes source page, figure, available parameters and selection history. **Shuffle** preserves candidate identity and records display order. Keys **1–9** toggle keep; **Shift + 1–9** rejects, outside text fields and buttons.
+**Source & context** contains the three starting questions and the prompt library. **Reveal identities** shows model, recipe and lineage. **Shuffle** preserves candidate identity and records display order. Keys **1–9** toggle keep; **Shift + 1–9** rejects, outside text fields and buttons.
 
-**Export demo session** downloads all local generated rounds and their feedback as JSON, with explicit provenance. This is automated generation with human selection, not a trained artistic evaluator: the fitness signal is the review (keep/reject, favourite, optional 0–4 rubrics and notes). The report's JPEGs are bundled unchanged as references; stills taken from videos remain stills. Reported seeds are preserved, missing source settings remain `null`, and selection history is recorded separately from generated ancestry.
+**Export session** downloads all local generated rounds and their feedback as JSON, with explicit provenance. This is automated generation with human selection, not a trained artistic evaluator: the fitness signal is the review (keep/reject, favourite, optional 0–4 rubrics and notes). Reported seeds are preserved and selection history is recorded separately from generated ancestry.
 
 ## Your own experiments (optional)
 
@@ -76,7 +76,7 @@ python3 -m mutations_ui --data-dir /path/to/experiment serve
 
 | Endpoint | Purpose |
 | --- | --- |
-| `GET /api/catalog` | Included prompts, archive provenance and ready-made starting points. |
+| `GET /api/catalog` | Included prompts and ready-made starting points. |
 | `POST /api/demo` | Start a fresh demo; optional `preset`: `overview`, `style`, or `prompts`. |
 | `POST /api/generations/{id}/next` | Continue a submitted demo review with `expected_revision`. |
 | `POST /api/assets` | Upload raw media; percent-encoded filename in `X-Filename`. Returns `asset_id`. |
